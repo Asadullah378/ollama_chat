@@ -1,0 +1,110 @@
+# =========================================================================
+# OS / editor cruft
+# =========================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+Icon?
+
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*.sw?
+
+# =========================================================================
+# Secrets / local configuration
+# Tracked example files (e.g. backend/.env.example) are not matched.
+# =========================================================================
+.env
+.env.local
+.env.*.local
+*.env.local
+
+# =========================================================================
+# Python (backend)
+# =========================================================================
+backend/.venv/
+backend/venv/
+backend/env/
+backend/.python-version
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Packaging / build artifacts
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+sdist/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Test / type-checker caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =========================================================================
+# Node / Vite (frontend)
+# =========================================================================
+node_modules/
+.pnp.*
+.yarn/
+.yarn-integrity
+
+# Vite / bundler output
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+*.local
+
+# =========================================================================
+# Logs
+# =========================================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================================================================
+# Project-specific
+# =========================================================================
+# MinerU writes scratch output here when parsing PDFs
+backend/.mineru_out/
+backend/mineru_output/
+
+# Local Postgres dumps you might generate while developing
+*.sql.gz
+*.dump
