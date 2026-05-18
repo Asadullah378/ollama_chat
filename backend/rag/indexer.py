@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db import models as db_models  # read EMBEDDING_DIM lazily (may be patched at runtime)
@@ -25,6 +26,7 @@ from db.models import DocumentChunk, StoredDocument
 
 from .chunker import Chunk, chunk_markdown, embed_text_for
 from .embedder import EmbeddingError, OllamaEmbedder
+from .tokens import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,9 @@ async def _set_status(
     embedding_model: Optional[str] = None,
     embedding_dim: Optional[int] = None,
     embedded_at: Optional[datetime] = None,
+    chunks_token_count: Optional[int] = None,
+    embedding_duration_ms: Optional[int] = None,
+    total_processing_ms: Optional[int] = None,
 ) -> None:
     values: dict = {"embedding_status": status, "embedding_error": error}
     if chunk_count is not None:
@@ -70,6 +75,12 @@ async def _set_status(
         values["embedding_dim"] = embedding_dim
     if embedded_at is not None:
         values["embedded_at"] = embedded_at
+    if chunks_token_count is not None:
+        values["chunks_token_count"] = chunks_token_count
+    if embedding_duration_ms is not None:
+        values["embedding_duration_ms"] = embedding_duration_ms
+    if total_processing_ms is not None:
+        values["total_processing_ms"] = total_processing_ms
     await session.execute(
         update(StoredDocument).where(StoredDocument.id == doc_id).values(**values)
     )
@@ -100,6 +111,7 @@ async def index_document(
     if not await _try_claim(doc_id):
         return {"ok": False, "skipped": True, "reason": "already_in_flight"}
 
+    indexing_started = time.perf_counter()
     try:
         async with session_maker() as session:
             row = await session.get(StoredDocument, doc_id)
@@ -123,9 +135,12 @@ async def index_document(
             )
 
             markdown = row.markdown or ""
+            mineru_duration_ms = int(row.mineru_duration_ms or 0)
             chunks: list[Chunk] = chunk_markdown(markdown, source_name=row.original_filename)
 
         if not chunks:
+            embed_duration_ms = 0
+            total_ms = mineru_duration_ms + int((time.perf_counter() - indexing_started) * 1000)
             async with session_maker() as session:
                 await session.execute(
                     delete(DocumentChunk).where(DocumentChunk.document_id == doc_id)
@@ -138,6 +153,9 @@ async def index_document(
                     embedding_model=embedder.model,
                     embedding_dim=0,
                     embedded_at=_utc_now(),
+                    chunks_token_count=0,
+                    embedding_duration_ms=embed_duration_ms,
+                    total_processing_ms=total_ms,
                 )
             return {"ok": True, "chunk_count": 0}
 
@@ -147,6 +165,11 @@ async def index_document(
         )
 
         texts = [embed_text_for(c) for c in chunks]
+        # Real token counts per chunk (tiktoken cl100k_base ≈ Qwen). These power
+        # the "RAG mode tokens" total on the docs page and per-chunk stats.
+        chunk_token_counts = [count_tokens(c.content) for c in chunks]
+        chunks_token_total = sum(chunk_token_counts)
+        embed_started = time.perf_counter()
         try:
             vectors = await embedder.embed(texts)
         except EmbeddingError as e:
@@ -155,6 +178,7 @@ async def index_document(
                 await _set_status(session, doc_id, status="failed", error=msg)
             logger.error("RAG: embedding failed for %s: %s", doc_id, msg)
             return {"ok": False, "error": msg}
+        embed_duration_ms = int((time.perf_counter() - embed_started) * 1000)
 
         if len(vectors) != len(chunks):
             msg = (
@@ -184,7 +208,7 @@ async def index_document(
                 await session.execute(
                     delete(DocumentChunk).where(DocumentChunk.document_id == doc_id)
                 )
-                for c, v in zip(chunks, vectors):
+                for c, v, tok in zip(chunks, vectors, chunk_token_counts):
                     session.add(
                         DocumentChunk(
                             document_id=doc_id,
@@ -193,10 +217,13 @@ async def index_document(
                             kind=c.kind,
                             content=c.content,
                             char_count=c.char_count,
-                            token_estimate=c.token_estimate,
+                            token_estimate=tok,
                             embedding=v,
                         )
                     )
+                total_ms = mineru_duration_ms + int(
+                    (time.perf_counter() - indexing_started) * 1000
+                )
                 await _set_status(
                     session,
                     doc_id,
@@ -205,6 +232,9 @@ async def index_document(
                     embedding_model=embedder.model,
                     embedding_dim=dim,
                     embedded_at=_utc_now(),
+                    chunks_token_count=chunks_token_total,
+                    embedding_duration_ms=embed_duration_ms,
+                    total_processing_ms=total_ms,
                 )
         except Exception as e:  # noqa: BLE001
             # Most common cause: pgvector extension missing or dim mismatch on

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
+  Clock,
   Database,
   FileText,
   FileUp,
+  Hash,
   Loader2,
   RefreshCw,
   Search,
@@ -28,6 +30,72 @@ function formatBytes(n) {
   if (v >= 1e6) return `${(v / 1e6).toFixed(2)} MB`
   if (v >= 1e3) return `${(v / 1e3).toFixed(0)} KB`
   return `${v} B`
+}
+
+function formatDurationMs(ms) {
+  if (ms == null || Number.isNaN(ms) || ms <= 0) return null
+  const v = Number(ms)
+  if (v < 1000) return `${v} ms`
+  const s = v / 1000
+  if (s < 60) return `${s.toFixed(s < 10 ? 2 : 1)} s`
+  const m = Math.floor(s / 60)
+  const r = Math.round(s - m * 60)
+  return `${m}m ${r}s`
+}
+
+function formatTokens(n) {
+  if (n == null || Number.isNaN(n)) return null
+  const v = Number(n)
+  if (!v) return null
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10_000 ? 0 : 1)}k`
+  return String(v)
+}
+
+function DocumentStats({ row, compact }) {
+  const mdTok = formatTokens(row.markdown_token_count)
+  const ragTok = formatTokens(row.chunks_token_count)
+  const mineruMs = formatDurationMs(row.mineru_duration_ms)
+  const embedMs = formatDurationMs(row.embedding_duration_ms)
+  const totalMs = formatDurationMs(row.total_processing_ms)
+  if (!mdTok && !ragTok && !mineruMs && !embedMs) return null
+  return (
+    <div
+      className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 ${
+        compact ? 'text-[10.5px]' : 'text-[11px]'
+      } text-slate-600 dark:text-slate-400`}
+    >
+      {mdTok ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/70 px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900/60"
+          title="Tokens used when sending the full markdown (RAG off). Estimated with tiktoken cl100k_base."
+        >
+          <Hash className="h-3 w-3 opacity-70" />
+          Full {mdTok} tok
+        </span>
+      ) : null}
+      {ragTok ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-cyan-300/70 bg-cyan-50 px-1.5 py-0.5 text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-950/30 dark:text-cyan-200"
+          title="Sum of tokens across all RAG chunks (upper bound for retrieval mode)."
+        >
+          <Database className="h-3 w-3 opacity-70" />
+          RAG {ragTok} tok
+        </span>
+      ) : null}
+      {(mineruMs || embedMs || totalMs) && !compact ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white/70 px-1.5 py-0.5 dark:border-slate-700 dark:bg-slate-900/60"
+          title={`MinerU: ${mineruMs || '—'} · Embedding: ${embedMs || '—'} · Total: ${
+            totalMs || '—'
+          }`}
+        >
+          <Clock className="h-3 w-3 opacity-70" />
+          {totalMs || mineruMs || embedMs}
+        </span>
+      ) : null}
+    </div>
+  )
 }
 
 const STATUS_STYLES = {
@@ -318,6 +386,7 @@ export function DocumentsPage() {
                       <span className="text-xs text-slate-500">
                         {formatBytes(row.source_bytes)} · {Number(row.char_count).toLocaleString()} chars
                       </span>
+                      <DocumentStats row={row} compact />
                       <EmbeddingStatus
                         row={row}
                         onReindex={onReindex}
@@ -355,10 +424,13 @@ export function DocumentsPage() {
               ) : preview ? (
                 <div>
                   <h2 className="mb-2 text-base font-semibold text-slate-900 dark:text-slate-100">{preview.original_filename}</h2>
-                  <p className="mb-4 text-xs text-slate-500">
+                  <p className="mb-2 text-xs text-slate-500">
                     id <code className="text-cyan-700/90">{preview.id}</code> · backend{' '}
                     {preview.mineru_backend}
                   </p>
+                  <div className="mb-4">
+                    <DocumentStats row={preview} />
+                  </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-inner dark:border-slate-800/90 dark:bg-gradient-to-b dark:from-slate-950/80 dark:to-slate-900/40">
                     <MarkdownMessage content={preview.markdown || ''} variant="document" />
                   </div>

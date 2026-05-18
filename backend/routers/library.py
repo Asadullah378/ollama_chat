@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Any, List, Optional
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import ChatArchive, DocumentChunk, StoredDocument
 from document_text import normalize_document_for_llm
 from mineru_runner import parse_file_with_mineru, sha256_file
-from rag import index_document_background
+from rag import count_tokens, index_document_background
 
 router = APIRouter()
 
@@ -72,6 +73,11 @@ class DocumentListItem(BaseModel):
     embedding_model: Optional[str] = None
     chunk_count: int = 0
     embedding_error: Optional[str] = None
+    markdown_token_count: int = 0
+    chunks_token_count: int = 0
+    mineru_duration_ms: int = 0
+    embedding_duration_ms: int = 0
+    total_processing_ms: int = 0
     created_at: Any
 
 
@@ -88,6 +94,11 @@ class DocumentDetail(BaseModel):
     embedding_dim: Optional[int] = None
     chunk_count: int = 0
     embedding_error: Optional[str] = None
+    markdown_token_count: int = 0
+    chunks_token_count: int = 0
+    mineru_duration_ms: int = 0
+    embedding_duration_ms: int = 0
+    total_processing_ms: int = 0
     embedded_at: Any = None
     created_at: Any
 
@@ -103,6 +114,11 @@ def _document_summary(row: StoredDocument) -> dict:
         "embedding_model": row.embedding_model,
         "chunk_count": int(row.chunk_count or 0),
         "embedding_error": row.embedding_error,
+        "markdown_token_count": int(row.markdown_token_count or 0),
+        "chunks_token_count": int(row.chunks_token_count or 0),
+        "mineru_duration_ms": int(row.mineru_duration_ms or 0),
+        "embedding_duration_ms": int(row.embedding_duration_ms or 0),
+        "total_processing_ms": int(row.total_processing_ms or 0),
         "created_at": row.created_at,
     }
 
@@ -164,6 +180,11 @@ async def get_document(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         embedding_dim=row.embedding_dim,
         chunk_count=int(row.chunk_count or 0),
         embedding_error=row.embedding_error,
+        markdown_token_count=int(row.markdown_token_count or 0),
+        chunks_token_count=int(row.chunks_token_count or 0),
+        mineru_duration_ms=int(row.mineru_duration_ms or 0),
+        embedding_duration_ms=int(row.embedding_duration_ms or 0),
+        total_processing_ms=int(row.total_processing_ms or 0),
         embedded_at=row.embedded_at,
         created_at=row.created_at,
     )
@@ -217,10 +238,12 @@ async def upload_document(
                 "message": "Same file already processed; returning existing record.",
             }
 
+        mineru_started = time.perf_counter()
         try:
             markdown, meta = await asyncio.to_thread(parse_file_with_mineru, tmp_path)
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
+        mineru_duration_ms = int((time.perf_counter() - mineru_started) * 1000)
 
         markdown = normalize_document_for_llm(markdown)
 
@@ -229,6 +252,11 @@ async def upload_document(
         if len(markdown) > max_store:
             markdown = markdown[:max_store] + "\n\n[… truncated at storage limit …]"
             truncated_note = "truncated"
+
+        # Estimate the token cost of attaching the full markdown to a chat. The
+        # actual count is approximate (tiktoken cl100k_base ≈ Qwen) but stable
+        # enough to power the docs page + context-budget UI.
+        markdown_tokens = count_tokens(markdown)
 
         row = StoredDocument(
             original_filename=file.filename,
@@ -239,6 +267,10 @@ async def upload_document(
             mineru_backend=os.getenv("MINERU_BACKEND", "pipeline"),
             extra_meta={**meta, "truncated_storage": bool(truncated_note)},
             embedding_status="pending",
+            markdown_token_count=markdown_tokens,
+            mineru_duration_ms=mineru_duration_ms,
+            # `embedding_duration_ms` and `total_processing_ms` are filled in
+            # by the indexer once it finishes embedding chunks.
         )
         db.add(row)
         try:
@@ -273,6 +305,8 @@ async def upload_document(
             "source_bytes": int(row.source_bytes),
             "mineru_backend": row.mineru_backend,
             "embedding_status": row.embedding_status or "pending",
+            "markdown_token_count": int(row.markdown_token_count or 0),
+            "mineru_duration_ms": int(row.mineru_duration_ms or 0),
             "deduplicated": False,
         }
     finally:
@@ -313,6 +347,11 @@ async def document_embedding_status(doc_id: uuid.UUID, db: AsyncSession = Depend
         "embedding_dim": row.embedding_dim,
         "chunk_count": int(row.chunk_count or 0),
         "embedding_error": row.embedding_error,
+        "markdown_token_count": int(row.markdown_token_count or 0),
+        "chunks_token_count": int(row.chunks_token_count or 0),
+        "mineru_duration_ms": int(row.mineru_duration_ms or 0),
+        "embedding_duration_ms": int(row.embedding_duration_ms or 0),
+        "total_processing_ms": int(row.total_processing_ms or 0),
         "embedded_at": row.embedded_at,
     }
 

@@ -88,6 +88,25 @@ export async function reindexLibraryDocument(id) {
 }
 
 /**
+ * Fetch the context-window length for a model (`{ model, context_length, source }`).
+ * Results are short-cached in-memory to avoid hitting `/api/show` for every
+ * keystroke.
+ */
+const _ctxCache = new Map()
+export async function getModelContextLength(model) {
+  if (!model) return null
+  if (_ctxCache.has(model)) return _ctxCache.get(model)
+  const promise = apiGet(`/api/models/${encodeURIComponent(model)}/context`).catch(
+    () => null,
+  )
+  _ctxCache.set(model, promise)
+  const result = await promise
+  // Replace the in-flight promise with the resolved value for synchronous reads.
+  _ctxCache.set(model, result)
+  return result
+}
+
+/**
  * POST with NDJSON / SSE-style `data: {...}` lines.
  * @param {string} path
  * @param {object} body

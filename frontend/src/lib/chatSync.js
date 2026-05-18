@@ -26,6 +26,14 @@ export function sessionToPayload(session) {
       ...(m.images?.length ? { images: m.images } : {}),
       ...(m.toolEvents?.length ? { toolEvents: m.toolEvents } : {}),
       ...(m.sources?.length ? { sources: m.sources } : {}),
+      ...(typeof m.promptTokens === 'number' ? { promptTokens: m.promptTokens } : {}),
+      ...(typeof m.completionTokens === 'number' ? { completionTokens: m.completionTokens } : {}),
+      ...(typeof m.totalDurationMs === 'number' ? { totalDurationMs: m.totalDurationMs } : {}),
+      ...(typeof m.loadDurationMs === 'number' ? { loadDurationMs: m.loadDurationMs } : {}),
+      ...(typeof m.promptEvalDurationMs === 'number'
+        ? { promptEvalDurationMs: m.promptEvalDurationMs }
+        : {}),
+      ...(typeof m.evalDurationMs === 'number' ? { evalDurationMs: m.evalDurationMs } : {}),
       ...(m.streaming ? { streaming: true } : {}),
     })),
     ollamaHistory: session.ollamaHistory || [],

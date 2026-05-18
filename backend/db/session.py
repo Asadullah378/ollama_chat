@@ -59,6 +59,18 @@ _ADDITIVE_MIGRATIONS = (
     "ALTER TABLE stored_documents ADD COLUMN IF NOT EXISTS embedded_at timestamptz",
     "ALTER TABLE chat_preferences ADD COLUMN IF NOT EXISTS rag_enabled boolean NOT NULL DEFAULT true",
     "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sources jsonb",
+    # Token + timing tracking (added in v0.4)
+    "ALTER TABLE stored_documents ADD COLUMN IF NOT EXISTS markdown_token_count integer NOT NULL DEFAULT 0",
+    "ALTER TABLE stored_documents ADD COLUMN IF NOT EXISTS chunks_token_count integer NOT NULL DEFAULT 0",
+    "ALTER TABLE stored_documents ADD COLUMN IF NOT EXISTS mineru_duration_ms integer NOT NULL DEFAULT 0",
+    "ALTER TABLE stored_documents ADD COLUMN IF NOT EXISTS embedding_duration_ms integer NOT NULL DEFAULT 0",
+    "ALTER TABLE stored_documents ADD COLUMN IF NOT EXISTS total_processing_ms integer NOT NULL DEFAULT 0",
+    "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS prompt_tokens integer",
+    "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS completion_tokens integer",
+    "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS total_duration_ms integer",
+    "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS load_duration_ms integer",
+    "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS prompt_eval_duration_ms integer",
+    "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS eval_duration_ms integer",
 )
 
 

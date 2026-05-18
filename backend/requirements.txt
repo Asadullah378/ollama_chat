@@ -10,5 +10,10 @@ asyncpg>=0.29.0
 # pgvector for RAG embeddings (https://github.com/pgvector/pgvector-python).
 # Requires the `vector` extension in PostgreSQL (CREATE EXTENSION vector;).
 pgvector>=0.3.0
+# tiktoken — used to estimate token counts for stored documents + per-chunk
+# stats. Qwen3 doesn't ship a tiktoken encoding, so we use cl100k_base which
+# is a ~85-90% accurate approximation that's good enough for context-budget
+# UI; exact prompt/completion counts in chat come from Ollama itself.
+tiktoken>=0.7.0
 # MinerU CLI is invoked as `python -m mineru`; see https://github.com/opendatalab/mineru — you may need `pip install 'mineru[all]'` for full format support.
 mineru[all]

@@ -16,12 +16,14 @@ import {
   Square,
   X,
 } from 'lucide-react'
-import { streamPostSse } from '../lib/api'
+import { getModelContextLength, streamPostSse } from '../lib/api'
 import { chatModelsOnly } from '../lib/models'
 import { SESSION_TITLE_MAX, useChatStore } from '../store/useChatStore'
 import { useToastStore } from '../store/useToastStore'
+import { ContextUsageBar } from './ContextUsageBar'
 import { DocumentLibraryModal } from './DocumentLibraryModal'
 import { MarkdownMessage } from './MarkdownMessage'
+import { MessageUsage } from './MessageUsage'
 import { ReasoningBlock } from './ReasoningBlock'
 import { RetrievedSources } from './RetrievedSources'
 
@@ -128,11 +130,41 @@ export function ChatPage({
   const [titleDraft, setTitleDraft] = useState('')
   /** Inline friendly error banner for the active session (last failed send). */
   const [chatError, setChatError] = useState(null)
+  /** Resolved context-length for the currently-selected model (cached per model in `api.js`). */
+  const [modelContextLength, setModelContextLength] = useState(null)
 
   const session = useMemo(
     () => sessions.find((s) => s.id === activeId) ?? sessions[0],
     [sessions, activeId],
   )
+
+  const activeModel = session?.model || defaultModel || ''
+  useEffect(() => {
+    let cancelled = false
+    if (!activeModel) {
+      setModelContextLength(null)
+      return undefined
+    }
+    void getModelContextLength(activeModel).then((info) => {
+      if (!cancelled) setModelContextLength(info?.context_length ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeModel])
+
+  /** Latest assistant turn's prompt_tokens + completion_tokens = current context size. */
+  const currentContextTokens = useMemo(() => {
+    const msgs = session?.messages ?? []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m.role !== 'assistant') continue
+      if (typeof m.promptTokens === 'number' || typeof m.completionTokens === 'number') {
+        return (m.promptTokens || 0) + (m.completionTokens || 0)
+      }
+    }
+    return 0
+  }, [session?.messages])
 
   useEffect(() => {
     init()
@@ -328,6 +360,16 @@ export function ChatPage({
             updateToolEvent(session.id, assistantMsgId, ev.name, {
               phase: 'done',
               result: ev.result,
+            })
+          }
+          if (ev.type === 'usage' && assistantMsgId) {
+            patchMessage(session.id, assistantMsgId, {
+              promptTokens: ev.prompt_tokens ?? null,
+              completionTokens: ev.completion_tokens ?? null,
+              totalDurationMs: ev.total_duration_ms ?? null,
+              loadDurationMs: ev.load_duration_ms ?? null,
+              promptEvalDurationMs: ev.prompt_eval_duration_ms ?? null,
+              evalDurationMs: ev.eval_duration_ms ?? null,
             })
           }
           if (ev.type === 'finished' && Array.isArray(ev.messages)) {
@@ -531,6 +573,13 @@ export function ChatPage({
               {session?.title}
             </button>
           )}
+          <div className="ml-2 hidden shrink-0 sm:block">
+            <ContextUsageBar
+              used={currentContextTokens}
+              limit={modelContextLength}
+              model={activeModel}
+            />
+          </div>
         </header>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 dark:border-slate-800/60 px-3 py-2">
@@ -656,6 +705,23 @@ export function ChatPage({
                         </div>
                       )}
                     </div>
+                    {!m.streaming &&
+                    (typeof m.promptTokens === 'number' ||
+                      typeof m.completionTokens === 'number' ||
+                      typeof m.totalDurationMs === 'number') ? (
+                      <div className="flex">
+                        <MessageUsage
+                          usage={{
+                            promptTokens: m.promptTokens,
+                            completionTokens: m.completionTokens,
+                            totalDurationMs: m.totalDurationMs,
+                            loadDurationMs: m.loadDurationMs,
+                            promptEvalDurationMs: m.promptEvalDurationMs,
+                            evalDurationMs: m.evalDurationMs,
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

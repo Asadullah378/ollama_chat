@@ -347,6 +347,32 @@ def _friendly_error_message(e: Exception) -> str:
     return txt
 
 
+def _ns_to_ms(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(int(value) / 1_000_000)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_usage(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Map the Ollama final-chunk fields to the wire shape the frontend stores on
+    the assistant message. Durations are returned in milliseconds (Ollama
+    reports nanoseconds).
+    """
+    return {
+        "prompt_tokens": payload.get("prompt_eval_count"),
+        "completion_tokens": payload.get("eval_count"),
+        "total_duration_ms": _ns_to_ms(payload.get("total_duration")),
+        "load_duration_ms": _ns_to_ms(payload.get("load_duration")),
+        "prompt_eval_duration_ms": _ns_to_ms(payload.get("prompt_eval_duration")),
+        "eval_duration_ms": _ns_to_ms(payload.get("eval_duration")),
+        "model": payload.get("model"),
+    }
+
+
 def _effective_think(model: str, think: Any, has_documents: bool) -> Any:
     """
     Qwen3.x often leaks long reasoning into `content` when think=true on document QA.
@@ -433,6 +459,10 @@ async def chat(request: Request, body: ChatBody):
                 acc_content = ""
                 acc_thinking = ""
                 last_tool_calls: Optional[List[Dict[str, Any]]] = None
+                # Ollama puts usage stats on the final chunk (done=true): we
+                # surface them to the UI so each assistant reply can show real
+                # prompt/completion token counts and timings.
+                final_usage: Optional[Dict[str, Any]] = None
                 async for part in stream_it:
                     payload = part.model_dump(mode="json", exclude_none=True)
                     msg = part.message
@@ -443,6 +473,11 @@ async def chat(request: Request, body: ChatBody):
                     yield _sse({"type": "ollama_chunk", "chunk": payload})
                     if msg.tool_calls:
                         last_tool_calls = [tc.model_dump(mode="json") for tc in msg.tool_calls]
+                    if payload.get("done") and (
+                        payload.get("prompt_eval_count") is not None
+                        or payload.get("eval_count") is not None
+                    ):
+                        final_usage = _extract_usage(payload)
 
                 final_content = acc_content
                 if acc_thinking or think_param:
@@ -484,6 +519,8 @@ async def chat(request: Request, body: ChatBody):
                     return
 
                 working.append(assistant)
+                if final_usage:
+                    yield _sse({"type": "usage", **final_usage})
                 yield _sse({"type": "finished", "messages": working})
                 return
 
@@ -580,6 +617,62 @@ async def show(request: Request, body: ShowBody):
         )
     except ResponseError as e:
         raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+
+
+@router.get("/models/{model:path}/context")
+async def model_context(model: str, request: Request):
+    """
+    Return the context-window length for a model.
+
+    Ollama exposes this on `/api/show` under `model_info` with a
+    family-prefixed key like `qwen3.context_length`, `llama.context_length`,
+    etc. We also fall back to parsing the modelfile `parameters` block for a
+    `num_ctx <n>` directive when `model_info` is unavailable.
+    """
+    if not model:
+        raise HTTPException(status_code=400, detail="Missing model name")
+    client = request.app.state.ollama
+    try:
+        show = (await client.show(model)).model_dump(
+            mode="json", exclude_none=True, by_alias=True
+        )
+    except ResponseError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+
+    context_length: Optional[int] = None
+    source: Optional[str] = None
+
+    info = show.get("model_info") or show.get("modelInfo") or {}
+    if isinstance(info, dict):
+        for key, value in info.items():
+            if isinstance(key, str) and key.endswith(".context_length"):
+                try:
+                    context_length = int(value)
+                    source = key
+                    break
+                except (TypeError, ValueError):
+                    continue
+
+    if context_length is None:
+        params = show.get("parameters") or ""
+        for line in str(params).splitlines():
+            line = line.strip()
+            if not line.lower().startswith("num_ctx"):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    context_length = int(parts[1])
+                    source = "parameters.num_ctx"
+                    break
+                except ValueError:
+                    pass
+
+    return {
+        "model": model,
+        "context_length": context_length,
+        "source": source,
+    }
 
 
 @router.post("/pull")

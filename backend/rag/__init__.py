@@ -4,6 +4,7 @@ from .chunker import Chunk, chunk_markdown
 from .embedder import OllamaEmbedder, embedder_from_env
 from .indexer import index_document, index_document_background, reset_failed_indexing
 from .retriever import RetrievedChunk, retrieve_for_query
+from .tokens import count_tokens
 
 __all__ = [
     "Chunk",
@@ -15,4 +16,5 @@ __all__ = [
     "reset_failed_indexing",
     "RetrievedChunk",
     "retrieve_for_query",
+    "count_tokens",
 ]

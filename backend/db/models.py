@@ -34,6 +34,16 @@ class StoredDocument(Base):
     source_bytes: Mapped[int] = mapped_column(BigInteger)
     mineru_backend: Mapped[str] = mapped_column(String(32), default="pipeline")
     extra_meta: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    # Token cost of the *full markdown* (estimated via tiktoken cl100k_base).
+    # Used by the docs page to show "full-markdown mode cost" up front.
+    markdown_token_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Sum of `DocumentChunk.token_estimate` over all chunks — denormalised so
+    # the docs page can show the "RAG mode cost ceiling" without aggregating.
+    chunks_token_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Timing breakdown for this document, in milliseconds.
+    mineru_duration_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    embedding_duration_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    total_processing_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # RAG indexing state. One of: pending | embedding | ready | failed | disabled.
     embedding_status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
     embedding_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -137,6 +147,17 @@ class ChatMessage(Base):
     # (chunk_id, document_id, document_name, chunk_index, heading_path, kind,
     # similarity, preview) so the chat survives a reload with sources intact.
     sources: Mapped[Optional[list[Any]]] = mapped_column(JSONB, nullable=True)
+    # Ollama-reported usage for the assistant turn that produced this message.
+    # `prompt_tokens` is the entire conversation context Ollama just evaluated
+    # (so summed across the chat it represents real context usage), and
+    # `completion_tokens` is how many tokens this single reply generated.
+    # All `*_duration_ms` fields are converted from Ollama's nanoseconds.
+    prompt_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    load_duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    prompt_eval_duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    eval_duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

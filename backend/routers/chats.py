@@ -31,6 +31,12 @@ class MessageIn(BaseModel):
     images: Optional[List[str]] = None
     toolEvents: Optional[List[Any]] = Field(default=None, alias="toolEvents")
     sources: Optional[List[Any]] = None
+    promptTokens: Optional[int] = Field(default=None, alias="promptTokens")
+    completionTokens: Optional[int] = Field(default=None, alias="completionTokens")
+    totalDurationMs: Optional[int] = Field(default=None, alias="totalDurationMs")
+    loadDurationMs: Optional[int] = Field(default=None, alias="loadDurationMs")
+    promptEvalDurationMs: Optional[int] = Field(default=None, alias="promptEvalDurationMs")
+    evalDurationMs: Optional[int] = Field(default=None, alias="evalDurationMs")
     streaming: bool = False
 
     model_config = {"populate_by_name": True}
@@ -79,6 +85,18 @@ def _message_to_api(m: ChatMessage) -> dict[str, Any]:
         out["toolEvents"] = m.tool_events
     if m.sources:
         out["sources"] = m.sources
+    if m.prompt_tokens is not None:
+        out["promptTokens"] = int(m.prompt_tokens)
+    if m.completion_tokens is not None:
+        out["completionTokens"] = int(m.completion_tokens)
+    if m.total_duration_ms is not None:
+        out["totalDurationMs"] = int(m.total_duration_ms)
+    if m.load_duration_ms is not None:
+        out["loadDurationMs"] = int(m.load_duration_ms)
+    if m.prompt_eval_duration_ms is not None:
+        out["promptEvalDurationMs"] = int(m.prompt_eval_duration_ms)
+    if m.eval_duration_ms is not None:
+        out["evalDurationMs"] = int(m.eval_duration_ms)
     return out
 
 
@@ -150,6 +168,12 @@ async def _replace_messages(db: AsyncSession, session_id: uuid.UUID, messages: L
                 images=m.images if m.images else None,
                 tool_events=m.toolEvents if m.toolEvents else None,
                 sources=m.sources if m.sources else None,
+                prompt_tokens=m.promptTokens,
+                completion_tokens=m.completionTokens,
+                total_duration_ms=m.totalDurationMs,
+                load_duration_ms=m.loadDurationMs,
+                prompt_eval_duration_ms=m.promptEvalDurationMs,
+                eval_duration_ms=m.evalDurationMs,
             )
         )
 
