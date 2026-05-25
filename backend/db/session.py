@@ -88,12 +88,6 @@ async def init_models(engine: AsyncEngine) -> None:
                 e,
             )
 
-        for stmt in _ADDITIVE_MIGRATIONS:
-            try:
-                await conn.execute(text(stmt))
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Schema migration step failed (%s): %s", stmt, e)
-
         try:
             await conn.run_sync(Base.metadata.create_all)
         except Exception as e:  # noqa: BLE001
@@ -103,6 +97,18 @@ async def init_models(engine: AsyncEngine) -> None:
                 e,
             )
             raise
+
+        # Additive migrations run AFTER create_all. 
+        # If the tables were just created, these are no-ops. If the tables
+        # existed, this adds missing columns.
+        for stmt in _ADDITIVE_MIGRATIONS:
+            try:
+                # Wrap each migration in a savepoint (nested transaction) so if
+                # one fails it doesn't abort the entire transaction block.
+                async with conn.begin_nested():
+                    await conn.execute(text(stmt))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Schema migration step failed (%s): %s", stmt, e)
 
         # If document_chunks already exists with a different vector dim,
         # the new HNSW index / queries will fail later. Detect and warn.

@@ -244,10 +244,32 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
 @router.put("/chats/sessions/{session_id}")
 async def update_session(session_id: str, body: SessionIn, db: AsyncSession = Depends(get_db)):
     sid = _parse_uuid(session_id)
-    row = await _load_session(db, sid)
+    # Lock the session row to serialize concurrent saves from the frontend and
+    # prevent DELETE+INSERT race conditions on chat_messages.
+    res = await db.execute(
+        select(ChatSession)
+        .where(ChatSession.id == sid)
+        .options(selectinload(ChatSession.messages))
+        .with_for_update()
+    )
+    row = res.scalar_one_or_none()
     if not row:
         row = ChatSession(id=sid)
         db.add(row)
+        try:
+            await db.flush()
+        except Exception:
+            # If a concurrent request already created it, roll back and re-fetch
+            await db.rollback()
+            res = await db.execute(
+                select(ChatSession)
+                .where(ChatSession.id == sid)
+                .options(selectinload(ChatSession.messages))
+                .with_for_update()
+            )
+            row = res.scalar_one_or_none()
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to lock session")
     row.title = body.title or row.title or "New chat"
     if body.model is not None:
         row.model = body.model

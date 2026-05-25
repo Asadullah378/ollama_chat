@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from ollama import AsyncClient  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
 
@@ -186,3 +188,13 @@ app.include_router(chats.router, prefix="/api")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if frontend_dist.exists() and frontend_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
+
+    @app.get("/{catchall:path}")
+    async def serve_frontend(catchall: str):
+        # Serve index.html for SPA routing
+        return FileResponse(frontend_dist / "index.html")

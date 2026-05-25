@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ollama
+      POSTGRES_PASSWORD: ollama
+      POSTGRES_DB: ollama_chat
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ollama -d ollama_chat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://ollama:ollama@db:5432/ollama_chat
+      # host.docker.internal allows the container to talk to Ollama running on the host OS
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    depends_on:
+      db:
+        condition: service_healthy
+    # Make sure we use the host's networking resolution for host.docker.internal on Linux
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:

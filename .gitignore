@@ -108,3 +108,6 @@ backend/mineru_output/
 # Local Postgres dumps you might generate while developing
 *.sql.gz
 *.dump
+
+
+desktop/dist/

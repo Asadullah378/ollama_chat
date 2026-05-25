@@ -153,6 +153,31 @@ run this once as a superuser:
 psql -U postgres -d ollama_chat -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ```
 
+## Electron Desktop App (1-Click Install)
+
+We provide an Electron wrapper that automatically manages a Docker Compose stack for the database and backend. This is the easiest way to run Ollama Studio without manually installing PostgreSQL or Python dependencies.
+
+**Prerequisites**:
+- Docker Desktop installed and running.
+- Ollama installed and running.
+
+**To run the desktop app in development**:
+```bash
+cd desktop
+npm install
+npm start
+```
+
+**To build a distributable native app (e.g., .dmg, .exe)**:
+```bash
+cd desktop
+npm install
+npm run dist
+```
+The built installer will be located in `desktop/dist/`.
+
+> **Note**: The first time you launch the app, it will build the Docker images in the background. Because it installs PyTorch and MinerU dependencies, this can take 10-15 minutes. Subsequent launches will be near-instant.
+
 ## Backend setup
 
 ```bash

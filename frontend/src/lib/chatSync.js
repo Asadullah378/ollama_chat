@@ -45,8 +45,31 @@ export function sessionToPayload(session) {
 /**
  * @param {Session} session
  */
+const _inFlightSaves = new Map()
+
 export async function saveSessionToServer(session) {
-  return apiPut(`/api/chats/sessions/${encodeURIComponent(session.id)}`, sessionToPayload(session))
+  const payload = sessionToPayload(session)
+  const key = session.id
+  
+  // Wait for any existing save for this session to finish to prevent backend
+  // race conditions (DELETE + INSERT unique constraint violations).
+  if (_inFlightSaves.has(key)) {
+    try {
+      await _inFlightSaves.get(key)
+    } catch {
+      // ignore
+    }
+  }
+
+  const promise = apiPut(`/api/chats/sessions/${encodeURIComponent(key)}`, payload)
+  _inFlightSaves.set(key, promise)
+  try {
+    return await promise
+  } finally {
+    if (_inFlightSaves.get(key) === promise) {
+      _inFlightSaves.delete(key)
+    }
+  }
 }
 
 /**

@@ -1,0 +1,55 @@
+{
+  "name": "ollama-studio",
+  "version": "1.0.0",
+  "description": "Local-first chat UI for Ollama with RAG document support",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.ollama.studio",
+    "productName": "Ollama Studio",
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "extraResources": [
+      {
+        "from": "../docker-compose.yml",
+        "to": "docker-compose.yml",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../Dockerfile",
+        "to": "Dockerfile",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../frontend",
+        "to": "frontend",
+        "filter": ["**/*"]
+      }
+    ]
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "docker-compose": "^1.4.2",
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1",
+    "wait-on": "^9.0.10"
+  }
+}
